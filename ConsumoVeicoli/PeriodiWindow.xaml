@@ -1,0 +1,48 @@
+﻿<Window x:Class="ConsumoVeicoli.PeriodiWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Seleziona Periodi" Width="500" Height="350" WindowStartupLocation="CenterOwner"  Language="it-IT">
+    <Grid Margin="10">
+        <Grid.RowDefinitions>
+            <RowDefinition/>
+            <RowDefinition Height="40"/>
+        </Grid.RowDefinitions>
+
+        <DataGrid x:Name="dgPeriodi" AutoGenerateColumns="False" Language="it-IT"  CanUserAddRows="False">
+            <DataGrid.Columns>
+                <!-- Colonna Targa in sola lettura -->
+                <DataGridTextColumn Header="Targa"
+                            Binding="{Binding Targa}"
+                            IsReadOnly="True" />
+
+                <!-- Colonna Data Da con DatePicker -->
+                <DataGridTemplateColumn Header="Data Da">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <DatePicker SelectedDate="{Binding DataDa, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Language="it-IT" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+
+                <!-- Colonna Data A con DatePicker -->
+                <DataGridTemplateColumn Header="Data A">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <DatePicker SelectedDate="{Binding DataA, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                        Language="it-IT" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+
+            </DataGrid.Columns>
+        </DataGrid>
+
+
+        <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Grid.Row="1">
+            <Button x:Name="btnOk" Content="OK" Width="70" Margin="5" Click="BtnOk_Click"/>
+            <Button x:Name="btnCancel" Content="Annulla" Width="70" Margin="5" Click="BtnCancel_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

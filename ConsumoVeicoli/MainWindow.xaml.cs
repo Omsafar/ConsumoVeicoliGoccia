@@ -290,11 +290,11 @@ namespace ConsumoVeicoli
             foreach (var targaObj in targhe)
             {
                 string targa = targaObj?.ToString() ?? "";
-                string tipoCarb = "";
-                if (!_mappaCarburante.TryGetValue(targa, out tipoCarb!))
-                    tipoCarb = tipoCarb.ToUpper().Trim();
-                else
+                string tipoCarb;
+                if (_mappaCarburante.TryGetValue(targa, out tipoCarb!))
+
                     tipoCarb = "GA";
+                tipoCarb = tipoCarb?.ToUpper().Trim() ?? "GA";
 
                 var recs = LeggiDatiDaDb_Paratori(targa, da, a);
                 var mediaGiornaliera = CalcolaMediaAritmeticaGiornaliera(recs);
@@ -358,9 +358,11 @@ namespace ConsumoVeicoli
 
                 // b) Verifico se il veicolo è a metano (ME) o gasolio (GA)
                 string tipoCarb;
-                if (!_mappaCarburante.TryGetValue(targa, out tipoCarb!))
+                if (_mappaCarburante.TryGetValue(targa, out tipoCarb!))
+                    tipoCarb = tipoCarb?.ToUpper().Trim() ?? "";
+                else
                     tipoCarb = "GA";  // default
-                tipoCarb = tipoCarb.ToUpper().Trim();
+
 
                 // c) Calcolo la media dei rifornimenti
                 var rifornimenti = rifornimentiMap[targa];

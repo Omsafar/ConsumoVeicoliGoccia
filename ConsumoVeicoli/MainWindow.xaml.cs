@@ -300,7 +300,11 @@ namespace ConsumoVeicoli
                 var mediaGiornaliera = CalcolaMediaAritmeticaGiornaliera(recs);
                 int sommaKm = recs.Sum(x => x.Km_Totali);
                 Debug.WriteLine($"La somma di tutti i km percorsi per la targa {targa} è: {sommaKm}");
-                var rifornimenti = LeggiRifornimentiDaDb_Sgam(targa, da, a);
+                var rifornimenti = LeggiRifornimentiDaDb_Sgam(
+                    targa,
+                    da,
+                    a,
+                    recs.Select(r => r.Numero_Interno));
                 bool isMetano = (tipoCarb == "ME");
                 // Calcolo la media usando KG se è metano, Litri altrimenti
                 var mediaRifornimenti = CalcolaMediaSommaRifornimenti(recs, rifornimenti, isMetano);
@@ -343,7 +347,11 @@ namespace ConsumoVeicoli
                 datiMap[period.Targa].AddRange(recs);
 
                 // Leggo i rifornimenti per la (targa, DataDa, DataA)
-                var rifs = LeggiRifornimentiDaDb_Sgam(period.Targa, period.DataDa, period.DataA);
+                var rifs = LeggiRifornimentiDaDb_Sgam(
+                    period.Targa,
+                    period.DataDa,
+                    period.DataA,
+                    recs.Select(r => r.Numero_Interno));
                 rifornimentiMap[period.Targa].AddRange(rifs);
             }
 
@@ -422,13 +430,44 @@ namespace ConsumoVeicoli
 
 
 
-        private List<RifornimentoRecord> LeggiRifornimentiDaDb_Sgam(string targa, DateTime d1, DateTime d2)
+        private List<RifornimentoRecord> LeggiRifornimentiDaDb_Sgam(
+            string targa,
+            DateTime d1,
+            DateTime d2,
+            IEnumerable<string>? codiciAlternativi = null)
         {
-            Debug.WriteLine($"Cerco rifornimenti per VEICOLO='{targa}' con data >= {d1} e data <= {d2}");
             var lista = new List<RifornimentoRecord>();
             using var cn = new SqlConnection(ConnStringSgam);
+            var codiciDaCercare = new List<string>();
+            var visti = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            void AggiungiCodice(string? codice)
+            {
+                if (string.IsNullOrWhiteSpace(codice))
+                    return;
+
+                codice = codice.Trim();
+                if (visti.Add(codice))
+                    codiciDaCercare.Add(codice);
+            }
+
+            AggiungiCodice(targa);
+
+            if (codiciAlternativi != null)
+            {
+                foreach (var codice in codiciAlternativi)
+                    AggiungiCodice(codice);
+            }
+
+            if (codiciDaCercare.Count == 0)
+                return lista;
+
             cn.Open();
-            var cmd = new SqlCommand(@"
+
+            foreach (var codice in codiciDaCercare)
+            {
+                Debug.WriteLine($"Cerco rifornimenti per VEICOLO='{codice}' con data >= {d1} e data <= {d2}");
+                using var cmd = new SqlCommand(@"
         SELECT VEICOLO, DATA_ORA, LITRI, KG
         FROM dbo.RisorseRifornimentiRilevazioni
         WHERE LTRIM(RTRIM(VEICOLO)) = @t
@@ -436,24 +475,26 @@ namespace ConsumoVeicoli
           AND DATA_ORA <= @d2
         ORDER BY DATA_ORA", cn);
 
-            cmd.Parameters.AddWithValue("@t", targa);
-            cmd.Parameters.AddWithValue("@d1", d1.Date);
-            cmd.Parameters.AddWithValue("@d2", d2.Date.AddDays(1).AddTicks(-1));
+                cmd.Parameters.AddWithValue("@t", codice);
+                cmd.Parameters.AddWithValue("@d1", d1.Date);
+                cmd.Parameters.AddWithValue("@d2", d2.Date.AddDays(1).AddTicks(-1));
 
-            using var dr = cmd.ExecuteReader();
-            while (dr.Read())
-            {
-                var r = new RifornimentoRecord
+                using var dr = cmd.ExecuteReader();
+                while (dr.Read())
                 {
-                    Veicolo = dr["VEICOLO"] is DBNull ? "" : (string)dr["VEICOLO"],
-                    DataOra = dr["DATA_ORA"] is DBNull ? DateTime.MinValue : (DateTime)dr["DATA_ORA"],
-                    Litri = dr["LITRI"] is DBNull ? 0 : (decimal)dr["LITRI"],
-                    Kg = dr["KG"] is DBNull ? 0 : (decimal)dr["KG"]  // Leggo anche i KG
-                };
-                Debug.WriteLine($"[SGAM] Trovato rifornimento: {r.Veicolo}, {r.DataOra}, Litri: {r.Litri}, Kg: {r.Kg}");
-                lista.Add(r);
+                    var r = new RifornimentoRecord
+                    {
+                        Veicolo = dr["VEICOLO"] is DBNull ? "" : (string)dr["VEICOLO"],
+                        DataOra = dr["DATA_ORA"] is DBNull ? DateTime.MinValue : (DateTime)dr["DATA_ORA"],
+                        Litri = dr["LITRI"] is DBNull ? 0 : (decimal)dr["LITRI"],
+                        Kg = dr["KG"] is DBNull ? 0 : (decimal)dr["KG"]  // Leggo anche i KG
+                    };
+                    Debug.WriteLine($"[SGAM] Trovato rifornimento: {r.Veicolo}, {r.DataOra}, Litri: {r.Litri}, Kg: {r.Kg}");
+                    lista.Add(r);
+                }
             }
-            Debug.WriteLine($"[SGAM] Rifornimenti totali letti per la targa {targa}: {lista.Count}");
+
+            Debug.WriteLine($"[SGAM] Rifornimenti totali letti per i codici {string.Join(", ", codiciDaCercare)}: {lista.Count}");
             return lista;
         }
 

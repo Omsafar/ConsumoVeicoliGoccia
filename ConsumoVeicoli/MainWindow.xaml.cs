@@ -521,6 +521,10 @@ namespace ConsumoVeicoli
             }
 
             Debug.WriteLine($"[SGAM] Rifornimenti totali letti per i codici {string.Join(", ", codiciDaCercare)}: {lista.Count}");
+            var totaleLitri = lista.Sum(r => r.Litri);
+            var totaleKg = lista.Sum(r => r.Kg);
+            Debug.WriteLine($"[SGAM] Somma totale litri: {totaleLitri}");
+            Debug.WriteLine($"[SGAM] Somma totale kg: {totaleKg}");
             return lista;
         }
 

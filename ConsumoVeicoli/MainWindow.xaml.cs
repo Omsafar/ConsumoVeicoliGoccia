@@ -446,9 +446,14 @@ namespace ConsumoVeicoli
                 if (string.IsNullOrWhiteSpace(codice))
                     return;
 
-                codice = codice.Trim();
-                if (visti.Add(codice))
-                    codiciDaCercare.Add(codice);
+                // Il campo VEICOLO in SGAM accetta solo il numero interno senza spazi.
+                // Rimuoviamo quindi tutti i caratteri di spazio e tabulazione prima di eseguire la query.
+                var codiceNormalizzato = new string(codice.Where(c => !char.IsWhiteSpace(c)).ToArray());
+                if (string.IsNullOrEmpty(codiceNormalizzato))
+                    return;
+
+                if (visti.Add(codiceNormalizzato))
+                    codiciDaCercare.Add(codiceNormalizzato);
             }
 
             AggiungiCodice(targa);
@@ -534,12 +539,12 @@ namespace ConsumoVeicoli
             decimal totKm = datiConsumo.Sum(d => d.Km_Totali);
             // Se il veicolo è a metano usiamo i Kg, altrimenti i Litri
             decimal totFuel = isMetano
-                                ? rifornimenti.Skip(1).Sum(r => r.Kg)
-                                : rifornimenti.Skip(1).Sum(r => r.Litri);
+                                ? rifornimenti.Sum(r => r.Kg)
+                                : rifornimenti.Sum(r => r.Litri);
 
             Debug.WriteLine(isMetano
-                ? $"Totale kg (somma, saltando il primo): {totFuel}"
-                : $"Totale litri (somma, saltando il primo): {totFuel}");
+                ? $"Totale kg riforniti: {totFuel}"
+                : $"Totale litri riforniti: {totFuel}");
 
             if (totKm > 0 && totFuel > 0)
                 return totKm / totFuel;

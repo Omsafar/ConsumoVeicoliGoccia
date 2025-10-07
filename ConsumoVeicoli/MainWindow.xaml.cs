@@ -287,16 +287,17 @@ namespace ConsumoVeicoli
                 _mappaCarburante = CaricaTipiCarburante();
             }
             var risultati = new List<ConsumoMedioResult>();
+            var messaggiCaricamento = new List<string>();
+
             foreach (var targaObj in targhe)
             {
                 string targa = targaObj?.ToString() ?? "";
                 string tipoCarb;
                 if (_mappaCarburante.TryGetValue(targa, out tipoCarb!))
-
+                    tipoCarb = tipoCarb?.ToUpper().Trim() ?? "GA";
+                else
                     tipoCarb = "GA";
-                tipoCarb = tipoCarb?.ToUpper().Trim() ?? "GA";
-
-                var recs = LeggiDatiDaDb_Paratori(targa, da, a);
+                var recs = LeggiDatiDaDb_Paratori(targa, da, a, messaggiCaricamento);
                 var mediaGiornaliera = CalcolaMediaAritmeticaGiornaliera(recs);
                 int sommaKm = recs.Sum(x => x.Km_Totali);
                 Debug.WriteLine($"La somma di tutti i km percorsi per la targa {targa} è: {sommaKm}");
@@ -317,6 +318,11 @@ namespace ConsumoVeicoli
                 });
             }
             dgRisultati.ItemsSource = risultati;
+
+            if (messaggiCaricamento.Count > 0)
+            {
+                MessageBox.Show(string.Join(Environment.NewLine, messaggiCaricamento));
+            }
         }
 
 
@@ -333,6 +339,9 @@ namespace ConsumoVeicoli
             var rifornimentiMap = new Dictionary<string, List<RifornimentoRecord>>();
 
             // 1) Raccolgo i record per ciascun periodo/targa
+            var messaggiCaricamento = new List<string>();
+
+
             foreach (var period in lista)
             {
                 // Se non c'è ancora la chiave per questa targa, la inizializzo
@@ -343,7 +352,7 @@ namespace ConsumoVeicoli
                 }
 
                 // Leggo i record di tbDatiConsumo per la (targa, DataDa, DataA)
-                var recs = LeggiDatiDaDb_Paratori(period.Targa, period.DataDa, period.DataA);
+                var recs = LeggiDatiDaDb_Paratori(period.Targa, period.DataDa, period.DataA, messaggiCaricamento);
                 datiMap[period.Targa].AddRange(recs);
 
                 // Leggo i rifornimenti per la (targa, DataDa, DataA)
@@ -389,10 +398,19 @@ namespace ConsumoVeicoli
             }
 
             dgRisultati.ItemsSource = risultati;
+
+            if (messaggiCaricamento.Count > 0)
+            {
+                MessageBox.Show(string.Join(Environment.NewLine, messaggiCaricamento));
+            }
         }
 
 
-        private List<DatiConsumoRecord> LeggiDatiDaDb_Paratori(string targa, DateTime d1, DateTime d2)
+        private List<DatiConsumoRecord> LeggiDatiDaDb_Paratori(
+                string targa,
+                DateTime d1,
+                DateTime d2,
+                List<string>? messaggiCaricamento = null)
         {
             var lista = new List<DatiConsumoRecord>();
             using var cn = new SqlConnection(ConnString);
@@ -423,8 +441,11 @@ namespace ConsumoVeicoli
                 };
                 lista.Add(rec);
             }
-            MessageBox.Show($"Per la targa {targa} dal {d1:dd/MM/yyyy} al {d2:dd/MM/yyyy} ho trovato {lista.Count} record");
-
+            if (messaggiCaricamento != null)
+            {
+                messaggiCaricamento.Add(
+                    $"Per la targa {targa} dal {d1:dd/MM/yyyy} al {d2:dd/MM/yyyy} ho trovato {lista.Count} record");
+            }
             return lista;
         }
 

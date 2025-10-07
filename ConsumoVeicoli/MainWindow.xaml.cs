@@ -292,23 +292,24 @@ namespace ConsumoVeicoli
             foreach (var targaObj in targhe)
             {
                 string targa = targaObj?.ToString() ?? "";
-                string tipoCarb;
-                if (_mappaCarburante.TryGetValue(targa, out tipoCarb!))
-                    tipoCarb = tipoCarb?.ToUpper().Trim() ?? "GA";
-                else
-                    tipoCarb = "GA";
                 var recs = LeggiDatiDaDb_Paratori(targa, da, a, messaggiCaricamento);
+
+                // Determina correttamente se il veicolo è a METANO guardando targa e numeri interni
+                bool isMetano = IsMetanoForVeicolo(targa, recs);
+
                 var mediaGiornaliera = CalcolaMediaAritmeticaGiornaliera(recs);
                 int sommaKm = recs.Sum(x => x.Km_Totali);
                 Debug.WriteLine($"La somma di tutti i km percorsi per la targa {targa} è: {sommaKm}");
+
                 var rifornimenti = LeggiRifornimentiDaDb_Sgam(
                     targa,
                     da,
                     a,
                     recs.Select(r => r.Numero_Interno));
-                bool isMetano = (tipoCarb == "ME");
-                // Calcolo la media usando KG se è metano, Litri altrimenti
+
+                // km/l se gasolio, km/kg se metano
                 var mediaRifornimenti = CalcolaMediaSommaRifornimenti(recs, rifornimenti, isMetano);
+
 
                 risultati.Add(new ConsumoMedioResult
                 {
@@ -373,20 +374,15 @@ namespace ConsumoVeicoli
                 var recs = datiMap[targa];
                 var mediaGiornaliera = CalcolaMediaAritmeticaGiornaliera(recs);
 
-                // b) Verifico se il veicolo è a metano (ME) o gasolio (GA)
-                string tipoCarb;
-                if (_mappaCarburante.TryGetValue(targa, out tipoCarb!))
-                    tipoCarb = tipoCarb?.ToUpper().Trim() ?? "";
-                else
-                    tipoCarb = "GA";  // default
+                // b) Determina se la targa è METANO guardando targa + numeri interni dei suoi recs
+                bool isMetano = IsMetanoForVeicolo(targa, recs);
 
-
-                // c) Calcolo la media dei rifornimenti
+                // c) Calcolo la media dei rifornimenti (km/l o km/kg)
                 var rifornimenti = rifornimentiMap[targa];
-                bool isMetano = (tipoCarb == "ME");
-
-                // Se è metano => km/kg; se è gasolio => km/l
                 var mediaRifornimenti = CalcolaMediaSommaRifornimenti(recs, rifornimenti, isMetano);
+
+
+
 
                 // d) Infine aggiungo il risultato
                 risultati.Add(new ConsumoMedioResult
@@ -550,31 +546,24 @@ namespace ConsumoVeicoli
             List<RifornimentoRecord> rifornimenti,
             bool isMetano = false)
         {
-            if (datiConsumo == null || datiConsumo.Count == 0)
-                return 0;
-            if (rifornimenti == null || rifornimenti.Count == 0)
-                return 0;
+            if (datiConsumo == null || datiConsumo.Count == 0) return 0;
+            if (rifornimenti == null || rifornimenti.Count == 0) return 0;
 
-            Debug.WriteLine("----- Debug dei Km giornalieri -----");
-            foreach (var rec in datiConsumo)
-            {
-                Debug.WriteLine($"Data: {rec.Data:dd/MM/yyyy}, Km_Totali: {rec.Km_Totali}");
-            }
-            // Sommo tutti i km giornalieri
-            decimal totKm = datiConsumo.Sum(d => d.Km_Totali);
-            // Se il veicolo è a metano usiamo i Kg, altrimenti i Litri
-            decimal totFuel = isMetano
-                                ? rifornimenti.Sum(r => r.Kg)
-                                : rifornimenti.Sum(r => r.Litri);
+            decimal totKm     = datiConsumo.Sum(d => d.Km_Totali);
+            decimal totKg     = rifornimenti.Sum(r => r.Kg);
+            decimal totLitri  = rifornimenti.Sum(r => r.Litri);
 
-            Debug.WriteLine(isMetano
-                ? $"Totale kg riforniti: {totFuel}"
-                : $"Totale litri riforniti: {totFuel}");
+            // Fallback: se la mappa non ha identificato il metano ma abbiamo kg > 0 e litri ~ 0, tratta come metano
+            if (!isMetano && totKg > 0 && totLitri <= 0.5m)
+                isMetano = true;
 
-            if (totKm > 0 && totFuel > 0)
-                return totKm / totFuel;
-            return 0;
+            decimal totFuel = isMetano ? totKg : totLitri;
+
+            Debug.WriteLine($"[RIF] Km={totKm} | Kg={totKg} | Litri={totLitri} | Mode={(isMetano ? "METANO (km/kg)" : "GASOLIO (km/l)")}");
+
+            return (totKm > 0 && totFuel > 0) ? (totKm / totFuel) : 0;
         }
+
 
 
         private Dictionary<string, string> CaricaTipiCarburante()
@@ -596,18 +585,50 @@ namespace ConsumoVeicoli
             using var dr = cmd.ExecuteReader();
             while (dr.Read())
             {
-                var codice = dr["CODICE"] as string;               // la Targa o CodiceVeicolo
-                var tipoCarb = dr["TIPO_CARBURANTE"] as string;    // "GA" o "ME"
+                var codice = dr["CODICE"] as string;            // targa o numero interno
+                var tipoCarb = dr["TIPO_CARBURANTE"] as string; // "GA" o "ME"
 
                 if (!string.IsNullOrWhiteSpace(codice) && !string.IsNullOrWhiteSpace(tipoCarb))
                 {
-                    result[codice.Trim()] = tipoCarb.Trim();
+                    var tipo = tipoCarb.Trim();
+                    var k1 = codice.Trim();
+                    var k2 = new string(k1.Where(c => !char.IsWhiteSpace(c)).ToArray()); // versione senza spazi interni
+
+                    result[k1] = tipo;           // es. "GZ505CY" oppure "0033"
+                    result[k2] = tipo;           // es. "0033" (senza spazi), utile per VEICOLO='      0033'
                 }
             }
 
             return result;
         }
         #endregion
+
+        private bool IsMetanoForVeicolo(string targa, IEnumerable<DatiConsumoRecord> recs)
+        {
+            if (_mappaCarburante == null || _mappaCarburante.Count == 0)
+                _mappaCarburante = CaricaTipiCarburante();
+
+            // 1) prova con la targa
+            if (!string.IsNullOrWhiteSpace(targa))
+            {
+                var k1 = targa.Trim();
+                if (_mappaCarburante.TryGetValue(k1, out var tipo) &&
+                    string.Equals(tipo, "ME", StringComparison.OrdinalIgnoreCase))
+                    return true;
+            }
+
+            // 2) prova con tutti i numeri interni (trim e "no-spaces")
+            foreach (var ni in recs.Select(r => r.Numero_Interno).Where(s => !string.IsNullOrWhiteSpace(s)))
+            {
+                var k1 = ni.Trim();
+                var k2 = new string(k1.Where(c => !char.IsWhiteSpace(c)).ToArray());
+                if ((_mappaCarburante.TryGetValue(k1, out var tipo1) && string.Equals(tipo1, "ME", StringComparison.OrdinalIgnoreCase)) ||
+                    (_mappaCarburante.TryGetValue(k2, out var tipo2) && string.Equals(tipo2, "ME", StringComparison.OrdinalIgnoreCase)))
+                    return true;
+            }
+
+            return false;
+        }
 
         #region --- AUTISTI ---
 
